@@ -23,13 +23,13 @@ def _date(s):
         return None
 
 
-def rank(bear_todos, linear_issues, focus_terms=None, now=None):
+def rank(note_todos, linear_issues, focus_terms=None, now=None):
     now = now or dt.datetime.now()
     today = now.date()
     focus = {t.lower() for t in (focus_terms or []) if len(t) >= 3}
     items = []
 
-    for t in bear_todos:
+    for t in note_todos:
         text = t["text"]
         score = 1.0
         hot = False
@@ -46,7 +46,7 @@ def rank(bear_todos, linear_issues, focus_terms=None, now=None):
             score += 2.5
         small = _is_small(text)
         sub = t["note_title"] + (f" › {t['heading']}" if t.get("heading") else "")
-        items.append({"text": text, "sub": sub, "url": t["url"], "source": "bear", "score": score, "hot": hot, "small": small})
+        items.append({"text": text, "sub": sub, "url": t["url"], "source": t.get("source", "notes"), "score": score, "hot": hot, "small": small})
 
     for i in linear_issues:
         score = 1.0

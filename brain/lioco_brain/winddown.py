@@ -5,12 +5,12 @@ import os
 import subprocess
 import urllib.request
 
-from . import bear, browser
+from . import browser, notes
 
 
 def daily_title(cfg, now=None):
     now = now or dt.datetime.now()
-    fmt = (cfg.get("bear") or {}).get("daily_note_title") or "Daily {date}"
+    fmt = (cfg.get("notes") or {}).get("daily_note_title") or "Daily {date}"
     return fmt.replace("{date}", now.strftime("%Y-%m-%d"))
 
 
@@ -73,19 +73,24 @@ def run(cfg, note="", tomorrow="", park_tabs=False, do_quit=False, do_slack=Fals
 
     title = daily_title(cfg, now)
     entry = build_entry(note, tomorrow, tabs, now)
-    tag = (cfg.get("bear") or {}).get("daily_note_tag")
-    exists = False
-    try:
-        conn = bear.connect(bear.db_path(cfg))
-        exists = bear.find_by_title(bear.notes(conn), title) is not None
-    except Exception:  # noqa: BLE001
-        exists = False
-    if exists:
-        url = bear.append_to_note(title, entry)
-        steps.append(f"Appended to Bear note “{title}”")
+    tag = (cfg.get("notes") or {}).get("daily_note_tag")
+    url = None
+    backend = notes.backend(cfg)
+    if backend is None:
+        steps.append("Notes: disabled, nothing written")
+        if note.strip() or tomorrow.strip():
+            steps.append("Your note was NOT saved. Set notes.backend to bear or markdown.")
     else:
-        url = bear.create_note(title, entry, tags=[tag] if tag else None)
-        steps.append(f"Created Bear note “{title}”")
+        try:
+            exists = notes.find_by_title(backend.load(cfg), title) is not None
+        except Exception:  # noqa: BLE001
+            exists = False
+        if exists:
+            url = backend.append(cfg, title, entry)
+            steps.append(f"Appended to {backend.NAME} note “{title}”")
+        else:
+            url = backend.create(cfg, title, entry, tags=[tag] if tag else None)
+            steps.append(f"Created {backend.NAME} note “{title}”")
 
     if do_slack:
         try:

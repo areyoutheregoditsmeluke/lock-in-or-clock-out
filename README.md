@@ -42,19 +42,35 @@ tune the threshold against your own week: `python3 brain/lioco.py stats`.
 
 ## What the buttons do
 
-- **Lock in** pulls open tasks from Bear notes tagged `#todo` (unchecked boxes)
-  and from Linear (issues assigned to you), ranks them, and flags `important`
-  and `small`. In wind-down mode the small ones float to the top. Clicking one
+- **Lock in** pulls open tasks from your notes (unchecked boxes in notes tagged
+  `#todo`) and from Linear (issues assigned to you), ranks them, and flags
+  `important` and `small`. In wind-down mode the small ones float to the top. Clicking one
   opens it and starts a focus block.
-- **Prep for it** finds Bear notes related to the next meeting's title and
+- **Prep for it** finds notes related to the next meeting's title and
   attendees, open todos that mention them, and creates a `Prep: <meeting>` note
-  in Bear with a goal line, agenda, related links, and space for notes.
+  with a goal line, agenda, related links, and space for notes.
 - **Take a walk** starts a break timer sized to fit before your next meeting
   and tells you when to be back.
 - **Clock out** asks two questions, "where did you leave off" and "first thing
-  tomorrow", then appends them to today's `Daily YYYY-MM-DD` note in Bear,
-  parks your open browser tabs into it, optionally sets Slack away, quits
-  Slack, and locks the screen.
+  tomorrow", then appends them to today's `Daily YYYY-MM-DD` note, parks your
+  open browser tabs into it, optionally sets Slack away, quits Slack, and locks
+  the screen.
+
+## Notes: Bear or a markdown folder
+
+lioco needs somewhere to read todos from and write daily and prep notes to.
+Two backends are built in and `notes.backend: "auto"` picks one for you:
+
+| Backend | Chosen when | Reads | Writes |
+|---|---|---|---|
+| `bear` | Bear's database exists on this Mac | all notes, via a short-lived read-only copy | `bear://x-callback-url` create / append |
+| `markdown` | otherwise | every `.md` under `notes.markdown_dir` (an Obsidian vault works) | plain files in that folder |
+| `none` | you set it | nothing | nothing; tasks come from Linear only and clock-out text is **not saved** |
+
+Both backends use the same conventions: a note is a todo source when it
+contains `#todo` (or any tag in `notes.todo_tags`), a task is a line like
+`- [ ] reply to Dana`, and the daily note is titled `Daily YYYY-MM-DD`. Set
+`notes.markdown_dir` to your vault to use it directly.
 
 ## Install
 
@@ -72,7 +88,7 @@ writes `~/.config/lioco/config.json` from `config.example.json`.
 Permissions you will be asked for:
 
 - Hammerspoon → Accessibility (window watching, input counts).
-- Hammerspoon → Full Disk Access, only if Bear todos do not appear.
+- Hammerspoon → Full Disk Access, only if you use Bear and todos do not appear.
 - icalBuddy → Calendars, on first run.
 
 Optional environment variables, read from the login shell Hammerspoon inherits:
@@ -92,11 +108,33 @@ Edit `~/.config/lioco/config.json`. The useful knobs:
 | `sustain_evaluations` | 3 | consecutive drifting minutes before a nudge |
 | `cooldown_minutes` | 25 | minimum gap between nudges |
 | `work_dirs` | `~/code` | where "output" is checked |
-| `bear.todo_tags` | `["todo"]` | Bear tags whose unchecked boxes are your tasks |
-| `bear.daily_note_title` | `Daily {date}` | where clock-out entries go |
+| `notes.backend` | `auto` | `bear`, `markdown`, `auto`, or `none` |
+| `notes.markdown_dir` | `~/Documents/lioco-notes` | folder for the markdown backend |
+| `notes.todo_tags` | `["todo"]` | tags whose unchecked boxes are your tasks |
+| `notes.daily_note_title` | `Daily {date}` | where clock-out entries go |
 | `winddown.*` | | default checkboxes on the clock-out form |
 
 Reload Hammerspoon after editing (menubar dot → Reload config).
+
+## Privacy
+
+Everything runs locally. There is no server and no telemetry.
+
+- The observer records app names, switch counts, and keystroke/click/scroll
+  **counts**. It never records window titles, URLs, or what you typed. Browser
+  tab switching is detected as "the title changed", and the title itself is
+  discarded.
+- The event log at `~/.local/share/lioco/events.jsonl` contains scores, counts,
+  the top app name per window, and which button you pressed. Delete it any time.
+- The Bear backend copies Bear's database to a temp directory to read it without
+  fighting Bear for the lock. The copy is deleted as soon as the read finishes.
+- **Clock out with "Park browser tabs" checked writes the title and URL of every
+  open tab into your daily note.** Uncheck it on the card if that is not what
+  you want that day, or set `winddown.park_tabs` to `false`.
+- Meeting prep writes the meeting title, attendee names, and invite notes into
+  a prep note. Nothing leaves your notes app.
+- Linear and Slack are only contacted if you set `LINEAR_API_KEY` or
+  `SLACK_USER_TOKEN`. Keys are read from the environment, never stored.
 
 ## Layout
 
@@ -110,7 +148,8 @@ hammerspoon/lioco/   Hammerspoon module (Lua)
   menubar.lua        colored dot + menu
   init.lua           evaluate loop, nudges, actions
 brain/lioco.py       Python brain entry (prints JSON)
-brain/lioco_brain/   cal (icalBuddy), bear (SQLite + x-callback), linear, rank, browser, winddown, cli
+brain/lioco_brain/   cal (icalBuddy), notes (shared todo/search logic), bear + markdown backends,
+                     linear, rank, browser, winddown, cli
 tests/               python3 -m unittest tests.test_brain ; lua5.4 tests/test_lua.lua
 ```
 

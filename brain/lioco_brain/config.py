@@ -7,12 +7,14 @@ DEFAULTS = {
     "work_dirs": ["~/code"],
     "browsers": ["Google Chrome", "Arc", "Safari", "Brave Browser", "Firefox"],
     "meeting_prep_window_minutes": [10, 60],
-    "bear": {
+    "notes": {
+        "backend": "auto",
+        "markdown_dir": "~/Documents/lioco-notes",
         "todo_tags": ["todo"],
         "daily_note_title": "Daily {date}",
         "daily_note_tag": "daily",
-        "db_path": None,
     },
+    "bear": {"db_path": None},
     "linear": {"api_key_env": "LINEAR_API_KEY"},
     "winddown": {"park_tabs": True, "quit_apps": ["Slack"], "slack_away": True, "lock_screen": False},
     "log_path": "~/.local/share/lioco/events.jsonl",

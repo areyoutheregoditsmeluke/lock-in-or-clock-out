@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 
-from . import bear, cal, config, linear, rank, winddown
+from . import cal, config, linear, notes, rank, winddown
 
 
 def emit(obj, code=0):
@@ -24,12 +24,15 @@ def _calendar(cfg):
         return [], str(e)
 
 
-def _bear_notes(cfg):
+def _notes(cfg):
     try:
-        conn = bear.connect(bear.db_path(cfg))
-        return bear.notes(conn), None
+        return notes.load(cfg), None
     except Exception as e:  # noqa: BLE001
         return [], str(e)
+
+
+def _todo_tags(cfg):
+    return (cfg.get("notes") or {}).get("todo_tags") or ["todo"]
 
 
 def _linear(cfg):
@@ -51,22 +54,23 @@ def _meeting_terms(meeting):
 def cmd_context(cfg, args):
     events, cal_err = _calendar(cfg)
     in_meeting, nxt, left = cal.summarize(events)
-    notes, bear_err = _bear_notes(cfg)
-    todos = bear.todos(notes, (cfg.get("bear") or {}).get("todo_tags") or ["todo"]) if notes else []
+    all_notes, notes_err = _notes(cfg)
+    todos = notes.todos(all_notes, _todo_tags(cfg))
     out = {
         "now": dt.datetime.now().isoformat(timespec="minutes"),
         "in_meeting": in_meeting,
         "next_meeting": nxt,
         "meetings_left_today": left,
-        "bear_todo_count": len(todos),
-        "errors": {k: v for k, v in {"calendar": cal_err, "bear": bear_err}.items() if v},
+        "notes_backend": notes.backend_name(cfg),
+        "todo_count": len(todos),
+        "errors": {k: v for k, v in {"calendar": cal_err, "notes": notes_err}.items() if v},
     }
     return emit(out)
 
 
 def cmd_tasks(cfg, args):
-    notes, bear_err = _bear_notes(cfg)
-    todos = bear.todos(notes, (cfg.get("bear") or {}).get("todo_tags") or ["todo"]) if notes else []
+    all_notes, notes_err = _notes(cfg)
+    todos = notes.todos(all_notes, _todo_tags(cfg))
     issues, lin_err = _linear(cfg)
     focus = None
     if args.focus_next_meeting:
@@ -81,7 +85,7 @@ def cmd_tasks(cfg, args):
     out = {
         "tasks": ranked[: args.limit],
         "total": len(ranked),
-        "errors": {k: v for k, v in {"bear": bear_err, "linear": lin_err}.items() if v},
+        "errors": {k: v for k, v in {"notes": notes_err, "linear": lin_err}.items() if v},
     }
     return emit(out)
 
@@ -92,9 +96,9 @@ def cmd_prep(cfg, args):
     if not nxt:
         return emit({"meeting": None, "error": cal_err or "no upcoming meeting"}, 1)
     terms = _meeting_terms(nxt)
-    notes, bear_err = _bear_notes(cfg)
-    related = bear.search(notes, terms, limit=5, exclude_title_prefix="Prep: ") if notes else []
-    todos = bear.todos(notes, (cfg.get("bear") or {}).get("todo_tags") or ["todo"]) if notes else []
+    all_notes, notes_err = _notes(cfg)
+    related = notes.search(all_notes, terms, limit=5, exclude_title_prefix="Prep: ")
+    todos = notes.todos(all_notes, _todo_tags(cfg))
     issues, _ = _linear(cfg)
     focused = [t for t in rank.rank(todos, issues, focus_terms=terms) if any(f.lower() in t["text"].lower() for f in terms)][:5]
 
@@ -102,7 +106,6 @@ def cmd_prep(cfg, args):
     date = dt.date.today().strftime("%Y-%m-%d")
     title = f"Prep: {nxt['title']} — {date}"
     lines = [
-        f"# {title}",
         f"**When** {nxt['start_clock']} (in {nxt['minutes_until']} min)",
         f"**Who** {attendees}",
     ]
@@ -127,15 +130,16 @@ def cmd_prep(cfg, args):
     text = "\n".join(lines)
 
     prep_url = None
-    if not args.no_write:
+    backend = notes.backend(cfg)
+    if not args.no_write and backend is not None:
         try:
-            existing = bear.find_by_title(notes, title) if notes else None
+            existing = notes.find_by_title(all_notes, title)
             if existing:
-                prep_url = bear.note_url(existing["id"])
+                prep_url = existing.get("url")
             else:
-                prep_url = bear.create_note(title, text, tags=["meeting-prep"])
+                prep_url = backend.create(cfg, title, text, tags=["meeting-prep"])
         except Exception as e:  # noqa: BLE001
-            bear_err = str(e)
+            notes_err = str(e)
 
     summary_bits = [f"{len(related)} related notes", f"{len(focused)} open items"]
     if nxt.get("attendees"):
@@ -148,7 +152,7 @@ def cmd_prep(cfg, args):
         "prep_note_title": title,
         "prep_note_url": prep_url,
         "prep_text": text,
-        "errors": {k: v for k, v in {"calendar": cal_err, "bear": bear_err}.items() if v},
+        "errors": {k: v for k, v in {"calendar": cal_err, "notes": notes_err}.items() if v},
     })
 
 
@@ -196,14 +200,20 @@ def cmd_doctor(cfg, args):
     checks["icalBuddy"] = shutil.which("icalBuddy") or shutil.which("icalbuddy") or "missing (brew install ical-buddy)"
     events, cal_err = _calendar(cfg)
     checks["calendar"] = cal_err or f"{len(events)} events in next {cfg.get('calendar_hours_ahead', 10)}h"
+    from . import bear, markdown
+    backend = notes.backend_name(cfg)
+    checks["notes_backend"] = backend
     dbp = bear.db_path(cfg)
-    checks["bear_db"] = dbp if os.path.exists(dbp) else f"missing at {dbp}"
-    notes, bear_err = _bear_notes(cfg)
-    if bear_err:
-        checks["bear"] = bear_err
+    checks["bear_db"] = dbp if os.path.exists(dbp) else f"not found at {dbp}"
+    checks["markdown_dir"] = markdown.notes_dir(cfg) + ("" if markdown.available(cfg) else " (will be created on first write)")
+    all_notes, notes_err = _notes(cfg)
+    if notes_err:
+        checks["notes"] = notes_err
+    elif backend == "none":
+        checks["notes"] = "disabled: tasks come from Linear only, clock-out notes are not saved"
     else:
-        todos = bear.todos(notes, (cfg.get("bear") or {}).get("todo_tags") or ["todo"])
-        checks["bear"] = f"{len(notes)} notes, {len(todos)} open todos tagged {cfg['bear']['todo_tags']}"
+        todos = notes.todos(all_notes, _todo_tags(cfg))
+        checks["notes"] = f"{len(all_notes)} notes, {len(todos)} open todos tagged {_todo_tags(cfg)}"
     key_env = (cfg.get("linear") or {}).get("api_key_env") or "LINEAR_API_KEY"
     if os.environ.get(key_env):
         issues, lin_err = _linear(cfg)

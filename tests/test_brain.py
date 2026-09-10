@@ -11,7 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BRAIN = os.path.join(HERE, "..", "brain")
 sys.path.insert(0, BRAIN)
 
-from lioco_brain import bear, cal, rank, winddown  # noqa: E402
+from lioco_brain import bear, cal, config, markdown, notes, rank, winddown  # noqa: E402
 
 ICAL = """@@LIOCO@@Standup
     attendees: Alice Smith, Bob Jones
@@ -65,25 +65,72 @@ class BearTests(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.db = os.path.join(self.tmp, "database.sqlite")
         make_db(self.db)
-        self.notes = bear.notes(bear.connect(self.db))
+        self.cfg = config.load(os.path.join(self.tmp, "nonexistent.json"))
+        self.cfg["bear"]["db_path"] = self.db
+        self.cfg["notes"]["markdown_dir"] = os.path.join(self.tmp, "md")
+        self.notes = bear.load(self.cfg)
 
     def test_notes_excludes_trashed(self):
         self.assertEqual({n["title"] for n in self.notes}, {"Todo", "Roadmap notes", "Random"})
 
+    def test_load_cleans_temp_copy(self):
+        before = {d for d in os.listdir(tempfile.gettempdir()) if d.startswith("lioco-bear-")}
+        bear.load(self.cfg)
+        after = {d for d in os.listdir(tempfile.gettempdir()) if d.startswith("lioco-bear-")}
+        self.assertEqual(before, after)
+
+    def test_backend_autodetect(self):
+        self.assertIs(notes.backend(self.cfg), bear)
+        self.cfg["bear"]["db_path"] = os.path.join(self.tmp, "missing.sqlite")
+        self.assertIs(notes.backend(self.cfg), markdown)
+        self.cfg["notes"]["backend"] = "none"
+        self.assertIsNone(notes.backend(self.cfg))
+        self.assertEqual(notes.load(self.cfg), [])
+
+    def test_markdown_backend_roundtrip(self):
+        self.cfg["notes"]["backend"] = "markdown"
+        md = self.cfg["notes"]["markdown_dir"]
+        os.makedirs(md)
+        with open(os.path.join(md, "inbox.md"), "w") as f:
+            f.write("# Inbox #todo\n- [ ] Email Dana re: budget\n- [ ] Refactor everything\n")
+        loaded = markdown.load(self.cfg)
+        self.assertEqual(loaded[0]["title"], "Inbox #todo")
+        self.assertTrue(loaded[0]["url"].startswith("file://"))
+        todos = notes.todos(loaded, ["todo"])
+        self.assertEqual([t["text"] for t in todos], ["Email Dana re: budget", "Refactor everything"])
+        # clock-out writes a daily note, then appends to it on the second run
+        out = winddown.run(self.cfg, note="left off here", tomorrow="do the thing", now=dt.datetime(2026, 9, 10, 17, 0))
+        self.assertIn("Created markdown note", out["steps"][0])
+        out = winddown.run(self.cfg, note="second pass", now=dt.datetime(2026, 9, 10, 17, 30))
+        self.assertIn("Appended to markdown note", out["steps"][0])
+        with open(os.path.join(md, "Daily 2026-09-10.md")) as f:
+            text = f.read()
+        self.assertTrue(text.startswith("# Daily 2026-09-10"))
+        self.assertIn("left off here", text)
+        self.assertIn("second pass", text)
+        self.assertIn("- [ ] do the thing", text)
+        self.assertIn("#daily", text)
+
+    def test_winddown_with_notes_disabled_warns(self):
+        self.cfg["notes"]["backend"] = "none"
+        out = winddown.run(self.cfg, note="important thought")
+        self.assertTrue(any("NOT saved" in s for s in out["steps"]))
+        self.assertIsNone(out["note_url"])
+
     def test_todos(self):
-        todos = bear.todos(self.notes, ["todo"])
+        todos = notes.todos(self.notes, ["todo"])
         texts = [t["text"] for t in todos]
         self.assertEqual(texts, ["Reply to Alice about roadmap !", "Write the long design doc for the ingestion pipeline rewrite", "Ping Bob"])
         self.assertEqual(todos[0]["heading"], "Today")
         self.assertTrue(todos[0]["url"].startswith("bear://x-callback-url/open-note?id=A1"))
 
     def test_search(self):
-        hits = bear.search(self.notes, ["Roadmap", "Carol"], limit=3)
+        hits = notes.search(self.notes, ["Roadmap", "Carol"], limit=3)
         self.assertEqual(hits[0]["title"], "Roadmap notes")
         self.assertIn("Carol", hits[0]["snippet"])
 
     def test_rank(self):
-        todos = bear.todos(self.notes, ["todo"])
+        todos = notes.todos(self.notes, ["todo"])
         issues = [
             {"text": "ENG-1 Fix login", "title": "Fix login", "priority": 1, "due": None, "estimate": 1, "state": "Todo", "state_type": "unstarted", "project": "Auth", "url": "https://linear.app/x", "source": "linear"},
             {"text": "ENG-2 Big refactor", "title": "Big refactor", "priority": 3, "due": None, "estimate": 8, "state": "Todo", "state_type": "unstarted", "project": None, "url": None, "source": "linear"},
@@ -106,7 +153,7 @@ class BearTests(unittest.TestCase):
     def test_cli_tasks_and_context(self):
         cfg_path = os.path.join(self.tmp, "config.json")
         with open(cfg_path, "w") as f:
-            json.dump({"bear": {"db_path": self.db, "todo_tags": ["todo"]}, "work_dirs": []}, f)
+            json.dump({"bear": {"db_path": self.db}, "notes": {"todo_tags": ["todo"]}, "work_dirs": []}, f)
         env = dict(os.environ, LINEAR_API_KEY="", PATH="/nonexistent")
         r = subprocess.run([sys.executable, os.path.join(BRAIN, "lioco.py"), "--config", cfg_path, "tasks", "--limit", "2", "--small"],
                            capture_output=True, text=True, env=env)
@@ -116,7 +163,8 @@ class BearTests(unittest.TestCase):
         r = subprocess.run([sys.executable, os.path.join(BRAIN, "lioco.py"), "--config", cfg_path, "context"],
                            capture_output=True, text=True, env=env)
         out = json.loads(r.stdout)
-        self.assertEqual(out["bear_todo_count"], 3)
+        self.assertEqual(out["todo_count"], 3)
+        self.assertEqual(out["notes_backend"], "bear")
         self.assertIn("calendar", out["errors"])  # no icalBuddy/osascript here, fails gracefully
 
 

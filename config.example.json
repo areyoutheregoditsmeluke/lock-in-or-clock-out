@@ -1,0 +1,48 @@
+{
+  "brain_path": "/ABSOLUTE/PATH/TO/lock-in-or-clock-out/brain/lioco.py",
+  "python": "/usr/bin/python3",
+
+  "poll_seconds": 60,
+  "window_minutes": 15,
+  "churn_threshold": 0.6,
+  "sustain_evaluations": 3,
+  "cooldown_minutes": 25,
+  "snooze_minutes": 10,
+  "idle_reset_seconds": 300,
+  "focus_block_minutes": 25,
+  "weekdays_only": true,
+
+  "hours": {
+    "day_start": "08:00",
+    "lunch": "12:00",
+    "afternoon": "13:30",
+    "wind_down": "16:30",
+    "hard_stop": "18:30"
+  },
+
+  "meeting_prep_window_minutes": [10, 60],
+  "walk_min_gap_minutes": 25,
+  "break_minutes": 15,
+  "lunch_minutes": 30,
+
+  "work_dirs": ["~/code"],
+  "browsers": ["Google Chrome", "Arc", "Safari", "Brave Browser", "Firefox"],
+  "meeting_apps": ["zoom.us"],
+
+  "bear": {
+    "todo_tags": ["todo"],
+    "daily_note_title": "Daily {date}",
+    "daily_note_tag": "daily"
+  },
+  "linear": {
+    "api_key_env": "LINEAR_API_KEY"
+  },
+  "winddown": {
+    "park_tabs": true,
+    "quit_apps": ["Slack"],
+    "slack_away": true,
+    "lock_screen": false
+  },
+
+  "log_path": "~/.local/share/lioco/events.jsonl"
+}

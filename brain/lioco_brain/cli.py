@@ -59,6 +59,7 @@ def cmd_context(cfg, args):
     out = {
         "now": dt.datetime.now().isoformat(timespec="minutes"),
         "in_meeting": in_meeting,
+        "meetings": cal.meetings_json(events),
         "next_meeting": nxt,
         "meetings_left_today": left,
         "notes_backend": notes.backend_name(cfg),

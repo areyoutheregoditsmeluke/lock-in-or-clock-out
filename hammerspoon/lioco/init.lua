@@ -10,6 +10,7 @@ local modes = require("lioco.modes")
 local brain = require("lioco.brain")
 local card = require("lioco.card")
 local bar = require("lioco.menubar")
+local meeting = require("lioco.meeting")
 
 local M = {}
 local cfg = config.load()
@@ -70,20 +71,6 @@ local function refreshContext(cb)
     end
     if cb then cb(state.ctx) end
   end)
-end
-
-local function inMeeting()
-  if state.ctx and state.ctx.in_meeting then return true end
-  for _, name in ipairs(cfg.meeting_apps or {}) do
-    local app = hs.application.get(name)
-    if app then
-      for _, w in ipairs(app:allWindows()) do
-        local t = w:title() or ""
-        if t:match("Meeting") or t:match("Webinar") then return true end
-      end
-    end
-  end
-  return false
 end
 
 ------------------------------------------------------------------------
@@ -341,6 +328,24 @@ local function evaluate()
   refreshOutput()
   refreshContext()
 
+  -- In a meeting: switching windows is normal. Do not count it as drift.
+  local meetingReason = meeting.detect(cfg, state.ctx, t)
+  if meetingReason then
+    state.sustain = 0
+    state.driftStart = nil
+    state.lastMeetingEnd = t
+    bar.set("meeting", meetingReason, "")
+    log.write("eval", { meeting = meetingReason, period = modes.period(cfg, t) })
+    return
+  end
+  -- Short grace period after a call ends, so the post-meeting shuffle does not fire.
+  if state.lastMeetingEnd and t - state.lastMeetingEnd < minutes(cfg.meeting_grace_minutes or 5) then
+    state.sustain = 0
+    state.driftStart = nil
+    bar.set("locked in", "just left a meeting", "")
+    return
+  end
+
   local windowSec = minutes(cfg.window_minutes)
   local evs, before = observer.events(t - windowSec)
   local res = churn.score(evs, before, observer.input(t - windowSec), t, windowSec, state.recentOutput)
@@ -368,7 +373,7 @@ local function evaluate()
   local detail = string.format("%.2f · %s %d%%", res.score, res.top_app or "?", math.floor((res.top_share or 0) * 100))
   bar.set(label, detail, "")
 
-  if t < state.snoozeUntil or inMeeting() then return end
+  if t < state.snoozeUntil then return end
 
   local cooled = t - state.lastNudge > minutes(cfg.cooldown_minutes)
   local period = modes.period(cfg, t)

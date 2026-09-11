@@ -83,3 +83,27 @@ m = modes.pick(cfg, { next_meeting = { title = "X", minutes_until = 30 } }, { le
 assertf(m.id == "hard_stop" and m.size == "large" and m.primary.action == "winddown", "hard stop wins, escalates to large")
 
 print("all lua tests passed")
+
+-- Meeting detection (pure parts).
+local meeting = require("lioco.meeting")
+local ts = meeting.parseISO("2026-09-11T14:45")
+assertf(ts == os.time({ year = 2026, month = 9, day = 11, hour = 14, min = 45, sec = 0 }), "parseISO minutes")
+assertf(meeting.parseISO("2026-09-11T14:45:30") == ts + 30, "parseISO with seconds")
+assertf(meeting.parseISO("garbage") == nil and meeting.parseISO(nil) == nil, "parseISO rejects junk")
+local ctx = { meetings = {
+  { title = "Standup", start = "2026-09-11T14:45", ["end"] = "2026-09-11T15:15" },
+  { title = "No end", start = "2026-09-11T16:00" },
+} }
+assertf(meeting.inCalendarMeeting(ctx, ts + 600).title == "Standup", "inside standup")
+assertf(meeting.inCalendarMeeting(ctx, ts - 60) == nil, "one minute before standup is not in meeting")
+assertf(meeting.inCalendarMeeting(ctx, ts + 30 * 60) == nil, "end is exclusive")
+local t16 = meeting.parseISO("2026-09-11T16:00")
+assertf(meeting.inCalendarMeeting(ctx, t16 + 29 * 60).title == "No end", "missing end defaults to 30 min")
+assertf(meeting.inCalendarMeeting(ctx, t16 + 31 * 60) == nil, "default 30 min expires")
+assertf(meeting.inCalendarMeeting(nil, ts) == nil and meeting.inCalendarMeeting({}, ts) == nil, "no ctx is fine")
+local pats = cfg.meeting_window_patterns
+assertf(meeting.titleMatches({ "Zoom Meeting" }, pats) ~= nil, "zoom meeting window")
+assertf(meeting.titleMatches({ "Meet - abc-defg-hij - Google Chrome" }, pats) ~= nil, "google meet tab")
+assertf(meeting.titleMatches({ "Zoom", "Home", "GitHub - Google Chrome" }, pats) == nil, "zoom home window is not a call")
+assertf(meeting.titleMatches({ "Huddle: #eng" }, pats) ~= nil, "slack huddle")
+print("meeting tests passed")

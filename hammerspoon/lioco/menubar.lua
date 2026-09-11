@@ -8,6 +8,7 @@ local COLORS = {
   ["paused"] = { hex = "#8b949e" },
   ["focus"] = { hex = "#58a6ff" },
   ["break"] = { hex = "#a371f7" },
+  ["meeting"] = { hex = "#58a6ff" },
   ["warming up"] = { hex = "#8b949e" },
 }
 

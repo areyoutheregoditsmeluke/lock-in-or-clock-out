@@ -58,6 +58,12 @@ class CalTests(unittest.TestCase):
         in_mtg, nxt, _ = cal.summarize(events, dt.datetime(2026, 9, 10, 15, 0))
         self.assertTrue(in_mtg)
         self.assertEqual(nxt["title"], "Roadmap review with Carol")
+        mj = cal.meetings_json(events)
+        self.assertEqual([m["title"] for m in mj], ["Standup", "Roadmap review with Carol"])
+        self.assertEqual(mj[0]["start"], "2026-09-10T14:45")
+        self.assertEqual(mj[0]["end"], "2026-09-10T15:15")
+        no_end = cal.meetings_json([{"title": "X", "start": dt.datetime(2026, 9, 10, 9, 0), "end": None}])
+        self.assertEqual(no_end[0]["end"], "2026-09-10T09:30")
 
 
 class BearTests(unittest.TestCase):

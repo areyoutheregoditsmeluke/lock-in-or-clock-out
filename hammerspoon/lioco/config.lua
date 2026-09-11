@@ -19,6 +19,7 @@ M.defaults = {
   cooldown_minutes = 25,
   snooze_minutes = 10,
   idle_reset_seconds = 300,
+  meeting_grace_minutes = 5,
   focus_block_minutes = 25,
   weekdays_only = true,
 
@@ -37,7 +38,9 @@ M.defaults = {
 
   work_dirs = { expand("~/code") },
   browsers = { "Google Chrome", "Arc", "Safari", "Brave Browser", "Firefox" },
-  meeting_apps = { "zoom.us" },
+  meeting_apps = { "zoom.us", "Microsoft Teams", "FaceTime", "Slack" },
+  -- Lua patterns matched against window titles of meeting_apps and browsers
+  meeting_window_patterns = { "Zoom Meeting", "Zoom Webinar", "^Meet %- ", "Google Meet", "Microsoft Teams Meeting", "Huddle", "FaceTime" },
 
   bear = {
     todo_tags = { "todo" },

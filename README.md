@@ -34,8 +34,21 @@ score = 0.35·switching + 0.20·bouncing (A→B→A) + 0.20·fragmentation + 0.2
 
 Fast tabbing while typing a lot scores low (research). Fast tabbing while only
 clicking and scrolling, with nothing produced, scores high. Three drifting
-minutes in a row trigger a nudge. Nothing fires while idle, in a calendar
-meeting, on a Zoom call, during a break, or during a focus block.
+minutes in a row trigger a nudge. Nothing fires while idle, during a break, or
+during a focus block.
+
+**Meetings never count as drift.** Switching windows during a call is normal,
+so while you are in a meeting the drift counter is held at zero, the menubar
+dot turns blue, and nothing fires. You are "in a meeting" when any of these is
+true:
+
+- a calendar event is happening right now (checked locally every minute)
+- the microphone or a camera is in use (Zoom, Meet, Teams, Slack huddles, FaceTime)
+- a meeting app or browser has a window titled like a live call
+  (`meeting_window_patterns`, e.g. "Zoom Meeting", "Meet - …", "Huddle")
+
+After a call ends there is a 5-minute grace period (`meeting_grace_minutes`)
+so the post-meeting shuffle does not trigger a nudge.
 
 Every evaluation is logged to `~/.local/share/lioco/events.jsonl` so you can
 tune the threshold against your own week: `python3 brain/lioco.py stats`.
@@ -107,6 +120,8 @@ Edit `~/.config/lioco/config.json`. The useful knobs:
 | `churn_threshold` | 0.6 | drift score that counts as "not locked in" |
 | `sustain_evaluations` | 3 | consecutive drifting minutes before a nudge |
 | `cooldown_minutes` | 25 | minimum gap between nudges |
+| `meeting_apps` / `meeting_window_patterns` | Zoom, Teams, FaceTime, Slack | how live calls are recognized from window titles |
+| `meeting_grace_minutes` | 5 | quiet period after a call ends |
 | `work_dirs` | `~/code` | where "output" is checked |
 | `notes.backend` | `auto` | `bear`, `markdown`, `auto`, or `none` |
 | `notes.markdown_dir` | `~/Documents/lioco-notes` | folder for the markdown backend |
@@ -143,6 +158,7 @@ hammerspoon/lioco/   Hammerspoon module (Lua)
   observer.lua       app/window/tab/input watchers
   churn.lua          pure scoring
   modes.lua          time of day → which two buttons
+  meeting.lua        calendar / mic / camera / window-title meeting detection
   card.lua           the floating two-button card (hs.webview)
   brain.lua          runs the Python brain
   menubar.lua        colored dot + menu

@@ -120,6 +120,16 @@ def upcoming(hours=10):
     return _applescript(hours)
 
 
+def meetings_json(events):
+    """All fetched events as JSON-safe {title, start, end} for the Lua side."""
+    out = []
+    for e in sorted(events, key=lambda x: x["start"]):
+        end = e.get("end") or (e["start"] + dt.timedelta(minutes=30))
+        out.append({"title": e["title"], "start": e["start"].isoformat(timespec="minutes"),
+                    "end": end.isoformat(timespec="minutes")})
+    return out
+
+
 def summarize(events, now=None):
     """Return (in_meeting, next_meeting, meetings_left) with JSON-safe values."""
     now = now or dt.datetime.now()
